@@ -1754,43 +1754,6 @@ local function WritePoiLog()
     print("[HUDLocator] Position details written to " .. path .. "\n")
 end
 
-local function LocalizedText(category, key)
-    if not key or key == "" then return "" end
-    local util = nil
-    pcall(function() util = StaticFindObject("/Script/Pal.Default__PalMasterDataTablesUtility") end)
-    if not util or not util.IsValid or not util:IsValid() then return "" end
-    local world = utils.World()
-    if not world then return "" end
-    local text = nil
-    local ok = pcall(function()
-        text = util:GetLocalizedText(world, category, FName(key))
-    end)
-    if not ok or text == nil then return "" end
-    local str = ""
-    pcall(function() str = text:ToString() end)
-    if type(str) ~= "string" or str == "" or str == key then return "" end
-    return str
-end
-
-local function BountyTitle(spawner)
-    local clean = utils.GetCleanPalId(spawner)
-    local keys = { spawner, clean }
-    if clean ~= "" then
-        keys[#keys + 1] = "NAME_" .. clean
-        keys[#keys + 1] = "NPC_" .. clean
-    end
-    for _, key in ipairs(keys) do
-        local unique = LocalizedText(6, key)
-        if unique ~= "" then return unique end
-    end
-    for _, key in ipairs({ spawner, clean }) do
-        local human = LocalizedText(5, key)
-        if human ~= "" then return human end
-    end
-    if clean ~= "" then return clean end
-    return spawner
-end
-
 local bossSeen = {}
 
 local function LoadBossSpawners()
@@ -1798,7 +1761,6 @@ local function LoadBossSpawners()
     local rows = ReadBossTable()
     if not rows or #rows == 0 then return 0 end
     local alphas, bounties, oil, skipped = 0, 0, 0, 0
-    local nameSamples = {}
     for _, entry in ipairs(rows) do
         local rowKind = BossRowKind(entry)
         local kind = rowKind == "oilrig" and "alpha" or rowKind
@@ -1819,12 +1781,7 @@ local function LoadBossSpawners()
                     alphas = alphas + 1
                     if rowKind == "oilrig" then oil = oil + 1 end
                 else
-                    local title = BountyTitle(entry.spawner)
                     ids = { entry.spawner }
-                    if title ~= "" and string.lower(title) ~= string.lower(entry.spawner) then
-                        ids[#ids + 1] = title
-                    end
-                    if #nameSamples < 6 then nameSamples[#nameSamples + 1] = ids[#ids] end
                     bounties = bounties + 1
                 end
                 local pt = { k = kind, r = "grasslands", ids = ids, x = entry.x, y = entry.y }
@@ -1840,9 +1797,6 @@ local function LoadBossSpawners()
         alphas, bounties, oil))
     if skipped > 0 then
         print(string.format("[HUDLocator] Boss spawners skipped %d other rows.\n", skipped))
-    end
-    if #nameSamples > 0 then
-        print("[HUDLocator] Bounty names: " .. table.concat(nameSamples, ", ") .. "\n")
     end
     return alphas + bounties
 end
@@ -2428,11 +2382,16 @@ function M.BountyDisplay(charId)
     if key == "" and clean == "" then return nil end
     for _, pt in ipairs(pois.Points) do
         if pt.k == "bounty" then
+            local matched = false
             for _, id in ipairs(pt.ids or {}) do
                 local norm = string.lower(id)
                 if norm == key or (clean ~= "" and norm == clean) then
-                    return pt.ids[#pt.ids]
+                    matched = true
+                    break
                 end
+            end
+            if matched then
+                return pt.ids and pt.ids[1] or ""
             end
         end
     end
