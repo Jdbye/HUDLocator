@@ -23,4 +23,5 @@ Misc
 * Player controller lookup is cached for better performance.
 * Menu has been reworked, as all the new features were making it too crowded.
 * Unique text/beacon color for convenient Mimog tracking (because they're fun to hunt down)
+* Shiny pals no longer also show as Boss
 * Other minor improvements
