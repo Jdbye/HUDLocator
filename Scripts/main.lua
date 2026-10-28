@@ -285,6 +285,11 @@ RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.ToggleM
     menu.Toggle()
 end)
 
+-- Completionist list toggle (F5, no modifier).
+RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.ToggleCompletionList, Key.F5), {}, function()
+    menu.ToggleCompletionList()
+end)
+
 -- 6. HUD Edit Mode Toggle (Alt + F7)
 RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.ToggleEditMode, Key.F7), utilityModifier, function()
     pcall(function()
@@ -297,11 +302,11 @@ end)
 
 -- 7. HUD Config Menu Navigation
 RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.MenuUp, Key.UP_ARROW), {}, function()
-    if menu.isOpen then menu.Navigate("up") end
+    if menu.isOpen or menu.isCompletionistViewOpen then menu.Navigate("up") end
 end)
 
 RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.MenuDown, Key.DOWN_ARROW), {}, function()
-    if menu.isOpen then menu.Navigate("down") end
+    if menu.isOpen or menu.isCompletionistViewOpen then menu.Navigate("down") end
 end)
 
 RegisterKeyBind(GetKey(CONFIG.Global.KeyBinds and CONFIG.Global.KeyBinds.MenuLeft, Key.LEFT_ARROW), {}, function()

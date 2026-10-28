@@ -825,7 +825,7 @@ function M.draw(hud, activePlayers, activeRelics, activeChests, activeEggs, acti
             scale = math.max(0.5, math.min(2.0, scale))
 
             local cardW = 340.0 * scale
-            local cardH = 148.0 * scale
+            local cardH = 143.0 * scale
 
             local maxScrollX = math.max(1.0, screenW - cardW)
             local maxScrollY = math.max(1.0, screenH - cardH)
@@ -993,51 +993,80 @@ function M.draw(hud, activePlayers, activeRelics, activeChests, activeEggs, acti
         pcall(function()
             local modalW = 540.0
             local regionCount = #completion.Regions
-            local gapY = 6.0
-            local cardH = 88.0
-            local listBudget = math.max(240.0, screenH - 160.0)
-            if regionCount * (cardH + gapY) > listBudget then
-                cardH = math.max(74.0, math.floor(listBudget / math.max(1, regionCount)) - gapY)
+            local gapY = 8.0
+            local cardH = 121.0
+            local rowStep = cardH + gapY
+            local headerH = 68.0
+            local visibleRows = math.min(5, math.max(1, regionCount))
+            local maxBoxH = math.max(headerH + rowStep, screenH - 80.0)
+            while visibleRows > 1 and headerH + visibleRows * rowStep > maxBoxH do
+                visibleRows = visibleRows - 1
             end
-            local modalH = 76.0 + regionCount * (cardH + gapY)
+            local maxScroll = math.max(0, regionCount - visibleRows)
+            local scroll = math.max(0, math.min(maxScroll, menu.completionListScroll or 0))
+            if menu.completionScrollPending then
+                menu.completionScrollPending = false
+                for i, reg in ipairs(completion.Regions) do
+                    if reg.id == completion.currentRegionId then
+                        scroll = math.max(0, math.min(maxScroll, i - 1))
+                        break
+                    end
+                end
+            end
+            menu.completionListScroll = scroll
+            menu.completionListPage = visibleRows
+
+            local listH = visibleRows * rowStep - gapY
+            local modalH = headerH + listH + 16.0
             local modalX = math.max(20.0, (screenW - modalW) / 2.0)
             local modalY = math.max(20.0, (screenH - modalH) / 2.0)
 
-            -- Draw Panel Shadow & Base
             hud:DrawRect(modalShadowCol, modalX - 2.0, modalY - 2.0, modalW + 4.0, modalH + 4.0)
             hud:DrawRect(modalBgCol, modalX, modalY, modalW, modalH)
             hud:DrawRect(modalBorderCol, modalX, modalY, modalW, 4.0)
 
-            -- Header Title & Subtitle
-            utils.DrawText(hud, "REGIONAL COMPLETIONIST LIST", modalHeaderCol, modalX + 20.0, modalY + 16.0, 1.25, false)
+            utils.DrawText(hud, "REGIONAL COMPLETIONIST LIST", modalHeaderCol, modalX + 20.0, modalY + 16.0, 1.0, false)
             local globPct = completion.globalSaveProgress and completion.globalSaveProgress.overallPercent or 0
-            utils.DrawText(hud, "Global Save Progress: " .. globPct .. "%", { R = 0.0, G = 0.96, B = 0.83, A = 1.0 }, modalX + modalW - 200.0, modalY + 18.0, 0.9, false)
+            local globStr = "Global Save Progress: " .. globPct .. "%"
+            local globScale = 0.9
+            local globW = utils.GetTextSize(hud, globStr, globScale)
+            if not globW or globW <= 0 then
+                local _, scaleMult = utils.GetFontAndScale()
+                globW = utils.GetStringLength(globStr) * 8.4 * globScale * (scaleMult or 1.0)
+            end
+            utils.DrawText(hud, globStr, { R = 0.0, G = 0.96, B = 0.83, A = 1.0 }, modalX + modalW - 28.0 - globW, modalY + 18.0, globScale, false)
 
-            -- Separator Line
             hud:DrawRect(modalSepCol, modalX + 20.0, modalY + 48.0, modalW - 40.0, 1.0)
 
-            -- Render List of Regions
-            local startY = modalY + 60.0
-
-            for idx, reg in ipairs(completion.Regions) do
-                local rY = startY + (idx - 1) * (cardH + gapY)
+            local startY = modalY + headerH
+            local contentRight = modalW - 36.0
+            local first = scroll + 1
+            local last = math.min(regionCount, scroll + visibleRows)
+            for idx = first, last do
+                local reg = completion.Regions[idx]
+                local rY = startY + (idx - first) * rowStep
                 local stats = completion.cachedRegionStats and completion.cachedRegionStats[reg.id]
                 local isCurr = (reg.id == completion.currentRegionId)
 
                 local rBg = isCurr and modalCurrBgCol or modalNormalBgCol
                 local rBorder = isCurr and modalCurrBorderCol or modalNormalBorderCol
 
-                hud:DrawRect(rBg, modalX + 20.0, rY, modalW - 40.0, cardH)
+                hud:DrawRect(rBg, modalX + 20.0, rY, contentRight - 20.0, cardH)
                 hud:DrawRect(rBorder, modalX + 20.0, rY, 3.0, cardH)
 
-                -- Region Title & Current Location Badge
                 local titleStr = (reg.icon or "") .. " " .. reg.name
                 if isCurr then titleStr = titleStr .. "  [CURRENT LOCATION]" end
                 local tCol = isCurr and modalCurrTextCol or modalNormalTextCol
-                utils.DrawText(hud, titleStr, tCol, modalX + 30.0, rY + 8.0, 0.95, false)
+                utils.DrawText(hud, titleStr, tCol, modalX + 30.0, rY + 10.0, 1.0, false)
 
                 local regPct = stats and stats.percent or 0
-                utils.DrawText(hud, regPct .. "%", { R = 0.0, G = 0.96, B = 0.83, A = 1.0 }, modalX + modalW - 75.0, rY + 8.0, 0.9, false)
+                local pctStr = tostring(regPct) .. "%"
+                local pctW = utils.GetTextSize(hud, pctStr, 1.0)
+                if not pctW or pctW <= 0 then
+                    local _, scaleMult = utils.GetFontAndScale()
+                    pctW = utils.GetStringLength(pctStr) * 8.4 * (scaleMult or 1.0)
+                end
+                utils.DrawText(hud, pctStr, { R = 0.0, G = 0.96, B = 0.83, A = 1.0 }, modalX + contentRight - 8.0 - pctW, rY + 10.0, 1.0, false)
 
                 if stats then
                     local detStr = string.format("Fast Travel: %d/%d   Towers: %d/%d   Hacks: %d/%d",
@@ -1051,10 +1080,25 @@ function M.draw(hud, activePlayers, activeRelics, activeChests, activeEggs, acti
                         stats.journals and stats.journals.total or 0)
                     local detStr3 = AlphaLine(stats, reg.id)
 
-                    utils.DrawText(hud, detStr, modalDetTextCol, modalX + 30.0, rY + 28.0, 0.72, false)
-                    utils.DrawText(hud, detStr2, modalDetTextCol, modalX + 30.0, rY + 44.0, 0.72, false)
-                    utils.DrawText(hud, detStr3, modalDetTextCol, modalX + 30.0, rY + 60.0, 0.72, false)
+                    utils.DrawText(hud, detStr, modalDetTextCol, modalX + 30.0, rY + 40.0, 0.9, false)
+                    utils.DrawText(hud, detStr2, modalDetTextCol, modalX + 30.0, rY + 64.0, 0.9, false)
+                    utils.DrawText(hud, detStr3, modalDetTextCol, modalX + 30.0, rY + 88.0, 0.9, false)
                 end
+            end
+
+            if regionCount > visibleRows then
+                local trackX = modalX + modalW - 14.0
+                local trackY = startY
+                local trackH = listH
+                local trackW = 6.0
+                hud:DrawRect({ R = 0.15, G = 0.18, B = 0.24, A = 0.9 }, trackX, trackY, trackW, trackH)
+                local thumbH = math.max(28.0, trackH * (visibleRows / regionCount))
+                local travel = math.max(1.0, trackH - thumbH)
+                local thumbY = trackY
+                if maxScroll > 0 then
+                    thumbY = trackY + (scroll / maxScroll) * travel
+                end
+                hud:DrawRect({ R = 0.0, G = 0.95, B = 1.0, A = 0.9 }, trackX, thumbY, trackW, thumbH)
             end
         end)
     end

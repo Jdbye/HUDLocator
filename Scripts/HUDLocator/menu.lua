@@ -412,15 +412,6 @@ local menuItems = {
         valKey = "Action_Reset"
     },
     {
-        name = "Completionist List",
-        get = function() return M.isCompletionistViewOpen and "Opened" or "Press Right" end,
-        type = "action",
-        action = function()
-            M.isCompletionistViewOpen = not M.isCompletionistViewOpen
-        end,
-        transKey = "Settings_CompletionistList"
-    },
-    {
         name = "Max Distance (All)",
         get = function() return (CONFIG.Global and CONFIG.Global.MaxDistance) or CONFIG.Players.MaxDistance end,
         set = function(v)
@@ -556,7 +547,6 @@ local itemCategory = {
     ["HUD Position Preset"] = "Progress",
     ["HUD Tracker Scale"] = "Progress",
     ["Reset HUD Position"] = "Progress",
-    ["Completionist List"] = "Progress",
 }
 
 local categoryOrder = {
@@ -599,9 +589,26 @@ local function ItemVisible(item)
     return true
 end
 
+function M.ToggleCompletionList()
+    M.isCompletionistViewOpen = not M.isCompletionistViewOpen
+    if M.isCompletionistViewOpen then
+        M.completionListScroll = 0
+        M.completionScrollPending = true
+    end
+end
+
 local function GetVisibleItems()
     local visible = {}
     if not currentCategory then
+        table.insert(visible, {
+            name = "Open Completionist List",
+            transKey = "Settings_CompletionistList",
+            type = "action",
+            get = function() return M.isCompletionistViewOpen and "Opened" or "Press Right" end,
+            action = function()
+                M.ToggleCompletionList()
+            end,
+        })
         for _, cat in ipairs(categoryOrder) do
             table.insert(visible, {
                 name = cat.name,
@@ -653,7 +660,32 @@ function M.Toggle()
     end
 end
 
+function M.ScrollCompletionList(dir)
+    if not M.isCompletionistViewOpen then return end
+    local page = M.completionListPage or 5
+    local scroll = M.completionListScroll or 0
+    if dir == "up" then
+        scroll = scroll - 1
+    elseif dir == "down" then
+        scroll = scroll + 1
+    elseif dir == "pageup" then
+        scroll = scroll - page
+    elseif dir == "pagedown" then
+        scroll = scroll + page
+    elseif dir == "home" then
+        scroll = 0
+    elseif dir == "end" then
+        scroll = scroll + 100000
+    end
+    if scroll < 0 then scroll = 0 end
+    M.completionListScroll = scroll
+end
+
 function M.Navigate(dir)
+    if M.isCompletionistViewOpen and (dir == "up" or dir == "down") then
+        M.ScrollCompletionList(dir)
+        return
+    end
     if not M.isOpen then return end
 
     local visibleItems = GetVisibleItems()
@@ -790,7 +822,12 @@ function M.Draw(hud, SizeX, SizeY)
         elseif item.type == "label" then
             valStr = tostring(rawVal)
         elseif item.type == "action" then
-            valStr = configMod.GetTranslation(item.valKey or "Action_OpenURL", "Alt+Right to Open")
+            if item.valKey then
+                valStr = configMod.GetTranslation(item.valKey, "Alt+Right to Open")
+            else
+                local custom = item.get and tostring(item.get() or "") or ""
+                valStr = custom ~= "" and custom or configMod.GetTranslation("Action_OpenURL", "Alt+Right to Open")
+            end
         end
         
         local valueText = isSelected and "[ " .. valStr .. " ]" or valStr

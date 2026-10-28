@@ -1408,13 +1408,29 @@ function M.Draw(hud)
     end
 end
 
+local function ScrollListOr(dir, toolFn)
+    if M.Enabled and M.Active then
+        toolFn()
+        return
+    end
+    local menu = package.loaded["HUDLocator.menu"]
+    if menu and menu.isCompletionistViewOpen then
+        menu.ScrollCompletionList(dir)
+    end
+end
+
 if M.Enabled then
     RegisterKeyBind(Key.INS, {}, function() M.AddPoint() end)
     RegisterKeyBind(Key.DEL, {}, function() M.DeleteLastPoint() end)
-    RegisterKeyBind(Key.END, {}, function() M.Finish() end)
-    RegisterKeyBind(Key.HOME, {}, function() M.ClearDraft() end)
-    RegisterKeyBind(Key.PAGE_UP, {}, function() M.CycleRegion(-1) end)
-    RegisterKeyBind(Key.PAGE_DOWN, {}, function() M.CycleRegion(1) end)
+    RegisterKeyBind(Key.END, {}, function() ScrollListOr("end", M.Finish) end)
+    RegisterKeyBind(Key.HOME, {}, function() ScrollListOr("home", M.ClearDraft) end)
+    RegisterKeyBind(Key.PAGE_UP, {}, function() ScrollListOr("pageup", function() M.CycleRegion(-1) end) end)
+    RegisterKeyBind(Key.PAGE_DOWN, {}, function() ScrollListOr("pagedown", function() M.CycleRegion(1) end) end)
+else
+    RegisterKeyBind(Key.END, {}, function() ScrollListOr("end", function() end) end)
+    RegisterKeyBind(Key.HOME, {}, function() ScrollListOr("home", function() end) end)
+    RegisterKeyBind(Key.PAGE_UP, {}, function() ScrollListOr("pageup", function() end) end)
+    RegisterKeyBind(Key.PAGE_DOWN, {}, function() ScrollListOr("pagedown", function() end) end)
 end
 
 return M
