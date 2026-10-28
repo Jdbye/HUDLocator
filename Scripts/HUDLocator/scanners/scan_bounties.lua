@@ -274,23 +274,8 @@ local function UsableName(name, charIdStr, uniqueStr)
     return name
 end
 
-local function NoteName(charIdStr, uniqueStr, nick, filtered, chosen, detail)
-    if M.loggedNick then return end
-    M.loggedNick = true
-    print("[HUDLocator] Bounty name: " .. tostring(charIdStr)
-        .. " unique " .. tostring(uniqueStr)
-        .. " nick " .. tostring(nick)
-        .. " filtered " .. tostring(filtered)
-        .. " -> " .. (chosen ~= "" and chosen or "(none)")
-        .. (detail and (" (" .. detail .. ")") or "")
-        .. "\n")
-end
-
 local function PersonName(indivParam, charIdStr)
-    if not indivParam or not indivParam:IsValid() then
-        NoteName(charIdStr, "", "", "", "", "no parameter")
-        return ""
-    end
+    if not indivParam or not indivParam:IsValid() then return "" end
     local cacheKey = string.lower(charIdStr or "")
     local instance = ""
     pcall(function()
@@ -301,13 +286,10 @@ local function PersonName(indivParam, charIdStr)
     if cacheKey ~= "" and nameByKey[cacheKey] then return nameByKey[cacheKey] end
 
     local saveP = nil
-    local readOk, readErr = pcall(function() saveP = indivParam.SaveParameter end)
-    if not readOk or not saveP then
-        NoteName(charIdStr, "", "", "", "", readOk and "no save parameter" or tostring(readErr))
-        return ""
-    end
-    local nick, nickErr = FieldString(saveP, "NickName")
-    local filtered, filteredErr = FieldString(saveP, "FilteredNickName")
+    local readOk = pcall(function() saveP = indivParam.SaveParameter end)
+    if not readOk or not saveP then return "" end
+    local nick = FieldString(saveP, "NickName")
+    local filtered = FieldString(saveP, "FilteredNickName")
     local uniqueValue = nil
     pcall(function() uniqueValue = saveP.UniqueNPCID end)
     saveP = nil
@@ -317,40 +299,27 @@ local function PersonName(indivParam, charIdStr)
 
     local name = UsableName(filtered, charIdStr, uniqueStr)
     if name == "" then name = UsableName(nick, charIdStr, uniqueStr) end
-    local overrideId = ""
-    local localized = ""
-    local dbNote = CharacterDatabase() and "db" or "no db"
     if name == "" then
         local db = CharacterDatabase()
         if db then
             local output = {}
-            local ok, err = pcall(function()
+            local ok = pcall(function()
                 db:GetLocalizedCharacterName(FName(charIdStr), output)
             end)
             if ok then
-                localized = TextOf(output.OutText)
+                local localized = TextOf(output.OutText)
                 if localized == "" then localized = TextOf(output.outText) end
                 name = UsableName(localized, charIdStr, uniqueStr)
-            else
-                localized = "err " .. tostring(err)
             end
         end
     end
     if name == "" then
         local map = LoadHumanNames()
         local rowKey = string.lower(charIdStr or "")
-        if map and map[rowKey .. ".id"] then
-            overrideId = map[rowKey .. ".id"]
+        if map and map[rowKey] then
             name = UsableName(map[rowKey] or "", charIdStr, uniqueStr)
-        elseif map == nil then
-            overrideId = humanNames == false and "table empty" or "table unread"
         end
     end
-    local detail = "db " .. dbNote .. " localized " .. (localized ~= "" and localized or "(none)")
-    if overrideId ~= "" then detail = detail .. " override " .. overrideId end
-    if nickErr then detail = detail .. " nick " .. nickErr end
-    if filteredErr then detail = detail .. " filtered " .. filteredErr end
-    NoteName(charIdStr, uniqueStr, nick, filtered, name, detail)
     if name == "" or cacheKey == "" then return name end
     nameByKey[cacheKey] = name
     return name
