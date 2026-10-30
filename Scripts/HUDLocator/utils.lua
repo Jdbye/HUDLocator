@@ -543,6 +543,59 @@ function M.IsNotePicked(note)
     end
 end
 
+local NOTE_DESCRIPTION = 22
+
+local function NoteTitleLine(str, key)
+    if type(str) ~= "string" then return "" end
+    str = str:gsub("\r\n", "\n"):gsub("\r", "\n")
+    local line = str:match("^%s*(%S[^\n]*)")
+    if not line then return "" end
+    line = line:gsub("%s+$", ""):gsub("<[^>]+>", "")
+    if line == "" or line == key or line == "None" or #line > 120 then return "" end
+    return line
+end
+
+local function NoteTitleText(key, category)
+    if not key or key == "" or key == "None" then return "" end
+    if not M.MasterDataUtility then
+        local status, util = pcall(function() return StaticFindObject("/Script/Pal.Default__PalMasterDataTablesUtility") end)
+        if status and util then M.MasterDataUtility = util end
+    end
+    local world = M.World()
+    if not world or not M.MasterDataUtility then return nil end
+    local status, outText = pcall(function()
+        return M.MasterDataUtility:GetLocalizedText(world, category or NOTE_DESCRIPTION, FName(key))
+    end)
+    if not status or not outText then return "" end
+    local strStatus, str = pcall(function() return outText:ToString() end)
+    if not strStatus then return "" end
+    return NoteTitleLine(str, key)
+end
+
+local function NoteTitleFromData(idStr)
+    local world = M.World()
+    if not world or not M.MasterDataUtility then return "" end
+    local desc = nil
+    local ok = pcall(function()
+        local asset = M.MasterDataUtility:GetNoteDataAsset(world)
+        if not asset or not asset:IsValid() then return end
+        local data = asset:Find(FName(idStr))
+        if not data or not data:IsValid() then return end
+        if data.TextId_Description and data.TextId_Description.ToString then
+            desc = data.TextId_Description:ToString()
+        end
+    end)
+    if not ok or not desc or desc == "" or desc == "None" then return "" end
+    local titleKey = desc:gsub("DESCRIPTION", "TITLE"):gsub("Description", "Title"):gsub("DESC", "TITLE")
+    if titleKey ~= desc then
+        local titled = NoteTitleText(titleKey)
+        if titled and titled ~= "" then return titled end
+    end
+    local short = NoteTitleText(desc)
+    if short and short ~= "" then return short end
+    return ""
+end
+
 function M.GetTranslatedNoteName(noteKey)
     local idStr = nil
     if type(noteKey) == "string" then
@@ -551,27 +604,19 @@ function M.GetTranslatedNoteName(noteKey)
         pcall(function() idStr = noteKey:ToString() end)
     end
     if not idStr or idStr == "" or idStr == "None" then return nil end
-    
+
     if M.NoteNameCache[idStr] then
         return M.NoteNameCache[idStr]
     end
-    
-    local friendly = idStr
-    local num = string.match(idStr, "CastawayJournal_(%d+)")
-    if num then
-        friendly = configMod.GetTranslation("Note", "Journal") .. " (" .. configMod.GetTranslation("Castaway", "Castaway") .. " " .. tonumber(num) .. ")"
-    else
-        local suffix = string.match(idStr, "_(%d+)")
-        if suffix then
-            local prefix = string.match(idStr, "^([%w_]+)_%d+$") or "Journal"
-            friendly = configMod.GetTranslation("Note", "Journal") .. " (" .. prefix .. " " .. tonumber(suffix) .. ")"
-        else
-            friendly = configMod.GetTranslation("Note", "Journal") .. " (" .. idStr .. ")"
-        end
-    end
-    
-    M.NoteNameCache[idStr] = friendly
-    return friendly
+
+    local title = NoteTitleText(idStr, NOTE_DESCRIPTION)
+    if title == nil then return configMod.GetTranslation("Note", "Journal") end
+    if title == "" then title = NoteTitleText(idStr, 1) or "" end
+    if title == "" then title = NoteTitleFromData(idStr) end
+    if title == "" then title = configMod.GetTranslation("Note", "Journal") end
+
+    M.NoteNameCache[idStr] = title
+    return title
 end
 
 function M.GetDungeonDetails(cave)
