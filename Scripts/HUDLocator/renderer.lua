@@ -20,7 +20,6 @@ local cachedCanvasAddress = nil
 local cachedWidgets = {}
 local baseHudPoll = 0
 local cachedHudCanvas = nil
-local gameHudPoll = 0
 local gameHudHidden = false
 local boundHudAddress = nil
 
@@ -94,7 +93,6 @@ local function ClearWidgetCache()
     cachedWidgets = {}
     cachedHudCanvas = nil
     gameHudHidden = false
-    gameHudPoll = 0
 end
 
 local function NoteHud(hud)
@@ -119,6 +117,9 @@ local function Unwrap(value)
 end
 
 local function WidgetName(widget)
+    local full = FullName(widget)
+    local tail = full:match("%.([^%.%s]+)%s*$")
+    if tail and tail ~= "" and tail ~= "None" then return tail end
     local name = nil
     local ok = pcall(function() name = widget:GetName() end)
     if not ok or name == nil then return "" end
@@ -428,6 +429,20 @@ local function EffectivelyHidden(widget)
     return false
 end
 
+-- AHUD::bShowHUD. The Toggle HUD mod flips this property though the game does not appear to change it.
+-- A failed read stays nil so a missing property is not treated as hidden.
+local function ShowHudValue(hud)
+    if type(hud) ~= "userdata" then return nil end
+    local value = nil
+    local ok = pcall(function() value = hud.bShowHUD end)
+    if not ok then return nil end
+    return value
+end
+
+local function ShowHudOff(value)
+    return value == false or value == 0
+end
+
 local function CutscenePlaying(hud)
     local controller = nil
     pcall(function() controller = hud.PlayerOwner end)
@@ -493,17 +508,155 @@ local function BossCinematicPlaying()
     return BossSequenceIsCinematic(cachedBossSeq)
 end
 
-local gameplayHidden = false
-local gameplayHiddenAt = 0
+local gameHudHiddenAt = 0
 
-local function GameplayHudHidden(playerUi, hud)
+-- ForEach hands out LocalUnrealParam wrappers. :get() is only valid on those
+-- wrappers. Calling it on the struct underneath looks up a property named Get.
+local function UnwrapParam(value)
+    if type(value) ~= "userdata" then return value end
+    local label = ""
+    pcall(function() label = tostring(value) end)
+    if type(label) ~= "string" or not string.find(label, "UnrealParam", 1, true) then
+        return value
+    end
+    local inner = nil
+    local ok = pcall(function() inner = value:get() end)
+    if ok and inner ~= nil then return inner end
+    return value
+end
+
+local function ReadText(value, depth)
+    if depth == nil then depth = 0 end
+    if depth > 3 or value == nil then return "" end
+    if type(value) == "string" then return value end
+    if type(value) == "boolean" then return value and "1" or "0" end
+    if type(value) == "number" then return tostring(value) end
+    if type(value) ~= "userdata" then return "" end
+    value = UnwrapParam(value)
+    if type(value) == "string" then return value end
+    if type(value) == "boolean" then return value and "1" or "0" end
+    if type(value) == "number" then return tostring(value) end
+    if type(value) ~= "userdata" then return "" end
+    local text = ""
+    pcall(function()
+        if value.ToString then text = value:ToString() end
+    end)
+    if type(text) == "string" and text ~= "" and not string.find(text, "UnrealParam", 1, true) then
+        return text
+    end
+    local tagName = nil
+    pcall(function() tagName = value.TagName end)
+    if tagName ~= nil then
+        local nested = ReadText(tagName, depth + 1)
+        if nested ~= "" then return nested end
+    end
+    return ""
+end
+
+-- Walk the map itself. .Items is the internal pair storage, and reading that
+-- produced entries that were not the gameplay-tag keys.
+local function EachMap(mapObj, visitor)
+    if type(mapObj) ~= "userdata" or type(visitor) ~= "function" then return end
+    mapObj = UnwrapParam(mapObj)
+    if type(mapObj) ~= "userdata" then return end
+    local hasForEach = false
+    pcall(function() hasForEach = mapObj.ForEach ~= nil end)
+    if not hasForEach then return end
+    pcall(function()
+        mapObj:ForEach(function(a, b)
+            if type(a) == "number" then
+                local entry = UnwrapParam(b)
+                local key, value = nil, nil
+                if type(entry) == "userdata" then
+                    pcall(function()
+                        key = entry.Key
+                        value = entry.Value
+                    end)
+                end
+                if key ~= nil or value ~= nil then visitor(key, value) end
+            else
+                visitor(a, b)
+            end
+        end)
+    end)
+end
+
+local function ReasonIsHide(value)
+    value = UnwrapParam(value)
+    if value == true or value == 1 then return true end
+    local text = ReadText(value)
+    return text == "1" or text == "true"
+end
+
+local function ContainerHidden(container)
+    local hidden = false
+    local function take(key, value)
+        if hidden then return end
+        local name = ReadText(key)
+        local enabled = value
+        if name == "" or name == "0" or name == "1" then
+            name = ReadText(value)
+            enabled = key
+        end
+        if name ~= "" and name ~= "0" and name ~= "1" and ReasonIsHide(enabled) then
+            hidden = true
+        end
+    end
+    container = UnwrapParam(container)
+    local flagMap = nil
+    if type(container) == "userdata" then
+        pcall(function() flagMap = container.Flags end)
+    end
+    EachMap(flagMap, take)
+    if not hidden then EachMap(container, take) end
+    return hidden
+end
+
+-- Photo mode hides the gameplay HUD by setting a reason on UI.Layer.Game.
+-- The reason stays in the map after photo mode ends, with the value cleared to 0.
+local function GameLayerHidden(hud)
+    if type(hud) ~= "userdata" then return false end
+    local map = nil
+    pcall(function() map = hud.LayerHideFlagMap end)
+    local hidden = false
+    EachMap(map, function(key, value)
+        if hidden then return end
+        local layer = ReadText(key)
+        local container = value
+        if layer ~= "UI.Layer.Game" then
+            local other = ReadText(value)
+            if other == "UI.Layer.Game" then
+                layer = other
+                container = key
+            end
+        end
+        if layer == "UI.Layer.Game" then hidden = ContainerHidden(container) end
+    end)
+    return hidden
+end
+
+local function GameHudHidden(hud)
     -- Widget reflection and the boss search are too expensive to run every draw.
     local now = os.clock()
-    if now < gameplayHiddenAt then return gameplayHidden end
-    gameplayHiddenAt = now + 0.25
+    if now < gameHudHiddenAt and IsLive(cachedHudCanvas) then return gameHudHidden end
+    gameHudHiddenAt = now + 0.1
+
+    local layerHidden = GameLayerHidden(hud)
+    local showOff = ShowHudOff(ShowHudValue(hud))
+    local live = FindPlayerUi(hud)
+    if IsLive(live) then
+        cachedHudCanvas = live
+    end
+    if not IsLive(cachedHudCanvas) then
+        gameHudHidden = layerHidden or showOff
+        return gameHudHidden
+    end
+    local playerUi = cachedHudCanvas
 
     local hidden = false
-    if OwnHidden(playerUi) then
+    if showOff or layerHidden then
+        hidden = true
+    elseif OwnHidden(playerUi) then
         hidden = true
     else
         local root = ChildWidget(playerUi, "CanvasPanel_Root")
@@ -524,24 +677,8 @@ local function GameplayHudHidden(playerUi, hud)
             end
         end
     end
-    gameplayHidden = hidden
-    return gameplayHidden
-end
-
-local function GameHudHidden(hud)
-    gameHudPoll = gameHudPoll + 1
-    if not IsLive(cachedHudCanvas) or gameHudPoll >= 30 then
-        gameHudPoll = 0
-        local live = FindPlayerUi(hud)
-        if IsLive(live) then
-            cachedHudCanvas = live
-        end
-    end
-    if not IsLive(cachedHudCanvas) then
-        gameHudHidden = false
-        return false
-    end
-    gameHudHidden = GameplayHudHidden(cachedHudCanvas, hud)
+    gameHudHidden = hidden
+    return gameHudHidden
 end
 
 -- Pre-allocated color tables for Progress Tracker Card and Edit Mode
