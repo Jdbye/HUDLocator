@@ -197,7 +197,14 @@ local function ApplySettings(settings, gen)
     ApplyCategoryDisplay(CONFIG.Players, "Players_ShowText", "Players_ShowBeam", "Players_Enabled")
     ApplyCategoryDisplay(CONFIG.Relics, "Relics_ShowText", "Relics_ShowBeam", "Relics_Enabled")
     ApplyCategoryDisplay(CONFIG.Chests, "Chests_ShowText", "Chests_ShowBeam", "Chests_Enabled")
-    if settings["Chests_Filter"] ~= nil and CONFIG.Chests then CONFIG.Chests.Filter = settings["Chests_Filter"] end
+    if settings["Chests_Filter"] ~= nil and CONFIG.Chests then
+        local legacyFilter = {
+            Both = "Chests & Junk",
+            Chests = "Only Chests",
+            Junk = "Any Junk"
+        }
+        CONFIG.Chests.Filter = legacyFilter[settings["Chests_Filter"]] or settings["Chests_Filter"]
+    end
     if settings["Chests_GradeFilter"] ~= nil and CONFIG.Chests then CONFIG.Chests.GradeFilter = settings["Chests_GradeFilter"] end
     ApplyCategoryDisplay(CONFIG.Caves, "Caves_ShowText", "Caves_ShowBeam", "Caves_Enabled")
     ApplyCategoryDisplay(CONFIG.Eggs, "Eggs_ShowText", "Eggs_ShowBeam", "Eggs_Enabled")
@@ -284,7 +291,7 @@ function M.Init()
             Relics_ShowBeam = configMod.ShouldShowBeam(CONFIG.Relics),
             Chests_ShowText = configMod.ShouldShowText(CONFIG.Chests),
             Chests_ShowBeam = configMod.ShouldShowBeam(CONFIG.Chests),
-            Chests_Filter = CONFIG.Chests and CONFIG.Chests.Filter or "Both",
+            Chests_Filter = CONFIG.Chests and CONFIG.Chests.Filter or "Chests & Junk",
             Chests_GradeFilter = CONFIG.Chests and CONFIG.Chests.GradeFilter or "All",
             Caves_ShowText = configMod.ShouldShowText(CONFIG.Caves),
             Caves_ShowBeam = configMod.ShouldShowBeam(CONFIG.Caves),
@@ -448,33 +455,33 @@ function M.Init()
                 default = true
             },
         }),
-        Page("HUDLocator.Chests", "HUD Locator: Chests", "Text, beams, and filters for chests and junk piles.", {
+        Page("HUDLocator.Chests", "HUD Locator: Treasure", "Text, beams, and filters for treasure chests and junk piles.", {
             {
                 key = "Chests_ShowText",
                 type = "boolean",
-                label = "Chests: Text",
+                label = "Treasure: Text",
                 hint = "Show text labels for treasure chests and junk piles.",
                 default = true
             },
             {
                 key = "Chests_ShowBeam",
                 type = "boolean",
-                label = "Chests: Beam",
+                label = "Treasure: Beam",
                 hint = "Show 3D light beam pillars for treasure chests and junk piles.",
                 default = true
             },
             {
                 key = "Chests_Filter",
                 type = "enum",
-                label = "Chest Filter Type",
-                hint = "Filter between chests, junk piles, or both.",
-                default = "Both",
-                choices = { "Both", "Chests", "Junk" }
+                label = "Treasure Filter",
+                hint = "Choose chests, land junk, fishing junk, or a combination.",
+                default = "Chests & Junk",
+                choices = { "Chests & Junk", "Chests & Land Junk", "Chests & Fishing Junk", "Only Chests", "Any Junk", "Land Junk", "Fishing Junk" }
             },
             {
                 key = "Chests_GradeFilter",
                 type = "enum",
-                label = "Chest Grade Filter",
+                label = "Treasure Grade Filter",
                 hint = "Filter minimum rarity grade for displayed chests.",
                 default = "All",
                 choices = { "All", "Grade2+", "Grade3+", "Grade4+", "Grade5+", "Grade6Only", "None" }

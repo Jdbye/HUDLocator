@@ -74,7 +74,7 @@ M.CONFIG = {
         Enabled = true,
         ShowText = true,
         ShowBeam = true,
-        Filter = "Both",
+        Filter = "Chests & Junk",
         GradeFilter = "All",
         MaxDistance = 15000.0,
         Style = {
@@ -476,7 +476,7 @@ local defaultJSON = [[{
     "Enabled": true,
     "ShowText": true,
     "ShowBeam": true,
-    "Filter": "Both",
+    "Filter": "Chests & Junk",
     "GradeFilter": "All",
     "MaxDistance": 15000.0,
     "Style": {
@@ -885,6 +885,16 @@ local function MigrateDisplayFlags(parsed)
             M.CONFIG.Caves.ShowBeam = parsed.ShowCaves
             M.SyncCategoryEnabled(M.CONFIG.Caves)
         end
+    end
+
+    if M.CONFIG.Chests then
+        local legacyFilter = {
+            Both = "Chests & Junk",
+            Chests = "Only Chests",
+            Junk = "Any Junk"
+        }
+        local migrated = legacyFilter[M.CONFIG.Chests.Filter]
+        if migrated then M.CONFIG.Chests.Filter = migrated end
     end
 end
 

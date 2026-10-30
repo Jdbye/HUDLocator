@@ -80,10 +80,10 @@ local menuItems = {
     },
     {
         name = "Chest Filter",
-        get = function() return CONFIG.Chests.Filter or "Both" end,
+        get = function() return CONFIG.Chests.Filter or "Chests & Junk" end,
         set = function(v) CONFIG.Chests.Filter = v end,
         type = "enum",
-        values = { "Both", "Chests", "Junk" },
+        values = { "Chests & Junk", "Chests & Land Junk", "Chests & Fishing Junk", "Only Chests", "Any Junk", "Land Junk", "Fishing Junk" },
         transKey = "Settings_ChestFilter"
     },
     {
@@ -553,7 +553,7 @@ local categoryOrder = {
     { id = "General", name = "General" },
     { id = "Players", name = "Players" },
     { id = "Relics", name = "Relics" },
-    { id = "Chests", name = "Chests" },
+    { id = "Chests", name = "Treasure" },
     { id = "Caves", name = "Caves" },
     { id = "Eggs", name = "Eggs" },
     { id = "Journals", name = "Journals" },
