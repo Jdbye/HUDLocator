@@ -97,9 +97,6 @@ local function ActorClassName(actor)
         local cls = actor:GetClass()
         if cls then name = cls:GetName() end
     end)
-    if name == "" then
-        pcall(function() name = actor:GetFullName() end)
-    end
     return name or ""
 end
 
@@ -141,8 +138,7 @@ function M.Scan(playerPos, maxDistSq)
                     -- Defer expensive C++ reflection check until after spatial distance check
                     if within and not utils.IsChestOpened(chest) then
                         local name = configMod.GetTranslation("Chest", "Chest")
-                        local className = ActorClassName(chest)
-                        local junkKind = JunkKind("", className)
+                        local junkKind = nil
                         local gradeVal = nil
                         local statusModel, model = pcall(function() return chest.MapObjectModel end)
                         if statusModel and model and model:IsValid() then
@@ -152,6 +148,12 @@ function M.Scan(playerPos, maxDistSq)
                             local dataIdStatus, dataId = pcall(function() return model.MapObjectMasterDataId end)
                             if dataIdStatus and dataId then
                                 local idStr = dataId:ToString()
+                                local className = ""
+                                if string.find(idStr, "FishingJunk", 1, true)
+                                    or string.find(idStr, "RequiredLongHold", 1, true)
+                                    or string.find(idStr, "Search", 1, true) then
+                                    className = ActorClassName(chest)
+                                end
                                 junkKind = JunkKind(idStr, className)
                                 if junkKind == nil and idStr == "TreasureBox" and gradeVal then
                                     idStr = "TreasureBox_Grade" .. tostring(gradeVal)

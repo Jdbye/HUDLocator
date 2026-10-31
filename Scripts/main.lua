@@ -161,6 +161,7 @@ local hasLoggedDraw = false
 local hasLoggedHookFailure = false
 
 local function RegisterHUDHook()
+    renderer.WatchHudHideFlags()
     if isHUDHooked then return end
     
     local status = pcall(function()

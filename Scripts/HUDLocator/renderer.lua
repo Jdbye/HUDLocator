@@ -22,6 +22,10 @@ local baseHudPoll = 0
 local cachedHudCanvas = nil
 local gameHudHidden = false
 local boundHudAddress = nil
+-- SetHUDLayerHideFlag only marks this. The map is read on a later draw, after
+-- the loading screen is gone. Reading the arguments inside the hook stalls loads.
+local gameLayerHidden = false
+local gameLayerDirty = false
 
 local function IsLive(obj)
     if type(obj) ~= "userdata" then return false end
@@ -93,6 +97,8 @@ local function ClearWidgetCache()
     cachedWidgets = {}
     cachedHudCanvas = nil
     gameHudHidden = false
+    gameLayerHidden = false
+    gameLayerDirty = true
 end
 
 local function NoteHud(hud)
@@ -117,9 +123,6 @@ local function Unwrap(value)
 end
 
 local function WidgetName(widget)
-    local full = FullName(widget)
-    local tail = full:match("%.([^%.%s]+)%s*$")
-    if tail and tail ~= "" and tail ~= "None" then return tail end
     local name = nil
     local ok = pcall(function() name = widget:GetName() end)
     if not ok or name == nil then return "" end
@@ -509,9 +512,23 @@ local function BossCinematicPlaying()
 end
 
 local gameHudHiddenAt = 0
+local hideFlagHooked = false
 
--- ForEach hands out LocalUnrealParam wrappers. :get() is only valid on those
--- wrappers. Calling it on the struct underneath looks up a property named Get.
+local layerQueryAt = 0
+
+local function LoadingScreenUp()
+    local up = false
+    pcall(function()
+        local widget = FindFirstOf("WBP_LoadingScreen_Transition_C")
+        if not IsLive(widget) then widget = FindFirstOf("WBP_LoadingScreen_C") end
+        if not IsLive(widget) then return end
+        local inView = false
+        pcall(function() inView = widget:IsInViewport() end)
+        up = inView == true or inView == 1
+    end)
+    return up
+end
+
 local function UnwrapParam(value)
     if type(value) ~= "userdata" then return value end
     local label = ""
@@ -546,15 +563,13 @@ local function ReadText(value, depth)
     end
     local tagName = nil
     pcall(function() tagName = value.TagName end)
-    if tagName ~= nil then
+    if tagName ~= nil and tagName ~= value then
         local nested = ReadText(tagName, depth + 1)
         if nested ~= "" then return nested end
     end
     return ""
 end
 
--- Walk the map itself. .Items is the internal pair storage, and reading that
--- produced entries that were not the gameplay-tag keys.
 local function EachMap(mapObj, visitor)
     if type(mapObj) ~= "userdata" or type(visitor) ~= "function" then return end
     mapObj = UnwrapParam(mapObj)
@@ -581,7 +596,7 @@ local function EachMap(mapObj, visitor)
     end)
 end
 
-local function ReasonIsHide(value)
+local function ReasonIsOn(value)
     value = UnwrapParam(value)
     if value == true or value == 1 then return true end
     local text = ReadText(value)
@@ -598,7 +613,7 @@ local function ContainerHidden(container)
             name = ReadText(value)
             enabled = key
         end
-        if name ~= "" and name ~= "0" and name ~= "1" and ReasonIsHide(enabled) then
+        if name ~= "" and name ~= "0" and name ~= "1" and ReasonIsOn(enabled) then
             hidden = true
         end
     end
@@ -612,9 +627,7 @@ local function ContainerHidden(container)
     return hidden
 end
 
--- Photo mode hides the gameplay HUD by setting a reason on UI.Layer.Game.
--- The reason stays in the map after photo mode ends, with the value cleared to 0.
-local function GameLayerHidden(hud)
+local function QueryGameLayerHidden(hud)
     if type(hud) ~= "userdata" then return false end
     local map = nil
     pcall(function() map = hud.LayerHideFlagMap end)
@@ -630,33 +643,48 @@ local function GameLayerHidden(hud)
                 container = key
             end
         end
-        if layer == "UI.Layer.Game" then hidden = ContainerHidden(container) end
+        if layer == "UI.Layer.Game" and ContainerHidden(container) then
+            hidden = true
+        end
     end)
     return hidden
+end
+
+function M.WatchHudHideFlags()
+    if hideFlagHooked then return end
+    local registered = false
+    local ok = pcall(function()
+        RegisterHook("/Script/Pal.PalHUDService:SetHUDLayerHideFlag", function()
+            gameLayerDirty = true
+        end)
+        registered = true
+    end)
+    if ok and registered then hideFlagHooked = true end
 end
 
 local function GameHudHidden(hud)
     -- Widget reflection and the boss search are too expensive to run every draw.
     local now = os.clock()
     if now < gameHudHiddenAt and IsLive(cachedHudCanvas) then return gameHudHidden end
-    gameHudHiddenAt = now + 0.1
+    gameHudHiddenAt = now + 0.25
 
-    local layerHidden = GameLayerHidden(hud)
     local showOff = ShowHudOff(ShowHudValue(hud))
+    if showOff then
+        gameHudHidden = true
+        return true
+    end
     local live = FindPlayerUi(hud)
     if IsLive(live) then
         cachedHudCanvas = live
     end
     if not IsLive(cachedHudCanvas) then
-        gameHudHidden = layerHidden or showOff
-        return gameHudHidden
+        gameHudHidden = false
+        return false
     end
     local playerUi = cachedHudCanvas
 
     local hidden = false
-    if showOff or layerHidden then
-        hidden = true
-    elseif OwnHidden(playerUi) then
+    if OwnHidden(playerUi) then
         hidden = true
     else
         local root = ChildWidget(playerUi, "CanvasPanel_Root")
@@ -946,7 +974,24 @@ function M.draw(hud, activePlayers, activeRelics, activeChests, activeEggs, acti
             hideOverlay = BaseCampHudActive(hud)
         end
         if not hideOverlay then
-            hideOverlay = GameHudHidden(hud)
+            -- The game calls SetHUDLayerHideFlag for layers other than the gameplay HUD.
+            -- The map walk only runs after one of those calls, and at most twice a second.
+            if gameLayerDirty and os.clock() >= layerQueryAt then
+                layerQueryAt = os.clock() + 0.5
+                if LoadingScreenUp() then
+                    hideOverlay = true
+                else
+                    gameLayerDirty = false
+                    gameLayerHidden = QueryGameLayerHidden(hud)
+                end
+            end
+            if not hideOverlay then
+                if gameLayerHidden then
+                    hideOverlay = true
+                else
+                    hideOverlay = GameHudHidden(hud)
+                end
+            end
         end
     end
 

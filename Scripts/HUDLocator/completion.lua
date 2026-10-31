@@ -1234,8 +1234,8 @@ local function ReadBossTable()
                             tableObj = candidate
                             pcall(function() access = obj.Access_BossSpawnerUIDataTable end)
                             break
-                        end
-                    end
+            end
+        end
                 end
             end)
         end
